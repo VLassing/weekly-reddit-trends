@@ -1,134 +1,53 @@
-version: 0
+﻿version: 0
 project: weekly-reddit-trends
-window:
-  lookback_days: 7
-  sources:
-  - top_week
-  - new
-  deduplicate_across_sources: true
-tiers:
-  core:
-    fetch_posts_target: 60
-    shortlist_max: 8
-    fetch_comments: true
-    comments_top_level_target: 12
-    deep_analysis: default
-  secondary:
-    fetch_posts_target: 45
-    shortlist_max: 5
-    fetch_comments: true
-    comments_top_level_target: 10
-    deep_analysis: conditional
-  radar:
-    fetch_posts_target: 35
-    shortlist_max: 3
-    fetch_comments: false
-    comments_top_level_target: 8
-    deep_analysis: radar_hit_only
-post_scoring:
-  scale:
-  - 0
-  - 100
-  weights:
-    within_subreddit_engagement_percentile: 0.3
-    comment_activity: 0.2
-    recency: 0.15
-    profile_relevance: 0.2
-    information_value: 0.15
-  notes:
-  - Engagement must be normalized within each subreddit/week; raw score must not dominate across subreddit sizes.
-  - Three medium-strength independent signals may outrank one viral post.
-negative_filters:
+
+stage_a:
   hard_exclude:
-  - removed
-  - deleted
-  - spam
-  - giveaway
-  penalize:
-  - meme_only
-  - generic_support_question
-  - low_substance_self_promo
-  - repost
-  - routine_megathread
-  - showcase_without_discussion_value
-special_flags:
-  hype_filter: Apply extra skepticism to speculative or hype-heavy claims.
-  radar_escalation: Allow a secondary source to be promoted using radar-hit rules.
-  filter_showcase_noise: Penalize showcase-only posts unless discussion or technical value is high.
-  rumor_only: Preserve rumors/leaks but label all such findings as unverified.
-  seasonal: Adjust relevance for season and geography when appropriate.
-  focus_major_developments: Prefer major developments over routine community chatter.
-  deprioritize_careers: Downrank job-market and career discussion unless unusually important.
-  mainstream_sentiment: Use primarily for broad user reaction rather than technical authority.
-radar_hit_rules:
-  any_of:
-  - rule: extreme_within_subreddit_engagement
-    description: Post is an unusually strong outlier relative to that subreddit's weekly baseline.
-  - rule: cross_community_confirmation
-    min_independent_communities: 3
-    description: Same topic appears independently across multiple communities.
-  - rule: high_impact_classifier
-    description: Classifier marks the item as high impact for monitored interests.
-  - rule: major_external_event
-    description: Clear major event such as security incident, launch, policy shift, or research breakthrough.
-  on_hit:
-    fetch_comments: true
-    promote_for_analysis: true
-    report_section: radar_hits
-clustering:
-  enabled: true
-  cluster_across_subreddits: true
-  deduplicate_same_story: true
-  trend_score_weights:
-    independent_community_count: 0.3
-    normalized_engagement: 0.2
-    profile_relevance: 0.2
-    novelty: 0.15
-    discussion_quality: 0.15
-comment_analysis:
-  default_top_level_comments: 10
-  important_thread_top_level_comments: 15
-  extract:
-  - representative_positive_or_supportive_views
-  - representative_negative_or_counter_views
-  - concrete_experience_or_evidence
-  - recurring_limitations_or_failure_modes
-report_limits:
-  tech:
-    major_trends: 8
-    tools_products_gaining_traction: 6
-    worth_experimenting_with: 5
-    radar_hits: 5
-    community_divided: 4
-    worth_reading: 10
-    watch_next_week: 5
-  personal:
-    top_items: 8
-    recommendations_per_major_category: 5
-    radar_hits: 5
-    rabbit_hole_of_the_week: 1
-  rules:
-  - Limits are maxima, not quotas.
-  - Omit sections with weak signal rather than filling them.
-feedback_logging:
-  per_subreddit:
-  - posts_fetched
-  - posts_shortlisted
-  - posts_deep_analysed
-  - items_in_final_report
-  per_item:
-  - source_subreddit
-  - tier
-  - category
-  - preliminary_score
-  - cluster_id
-  - trend_score
-  - report_section
-  review_after_reports: 3
-  review_actions:
-  - promote
-  - keep
-  - demote
-  - remove
-  - add
-  missed_signal_audit: true
+    removed_states:
+      - removed
+      - deleted
+    obvious_spam: true
+    giveaways: true
+    routine_stickies_or_megathreads: true
+
+  engagement:
+    normalization: rank_within_subreddit
+    signals:
+      score_weight: 0.5
+      comment_count_weight: 0.5
+    absolute_floor:
+      logic: any
+      min_score: 5
+      min_comment_count: 3
+
+stage_b:
+  classifier:
+    batch_size: 25
+    body_excerpt_chars: 300
+
+    relevance:
+      min: 0
+      max: 3
+
+    value:
+      min: 0
+      max: 3
+
+    kinds:
+      - news
+      - tool
+      - release
+      - discussion
+      - recommendation
+      - comparison
+      - experience
+      - showcase
+      - question
+      - research
+      - other
+
+  preliminary_score:
+    engagement_weight: 0.4
+    llm_weight: 0.6
+    llm_formula: "(relevance + value) / 6"
+

@@ -1,0 +1,22 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets / environment
+.env
+.env.*
+!.env.example
+
+# Local run output
+runs/
+output/
+reports/
+state/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
