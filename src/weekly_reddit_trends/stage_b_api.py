@@ -111,6 +111,58 @@ def _usage_from_response(
     )
 
 
+def _repair_whitespace_only_post_ids(
+    response: StageBBatchResponse,
+    expected_post_ids: list[str],
+) -> StageBBatchResponse:
+    expected = set(expected_post_ids)
+
+    repaired_classifications = []
+    changed = False
+
+    for classification in response.classifications:
+        post_id = classification.post_id
+
+        if post_id in expected:
+            repaired_classifications.append(
+                classification
+            )
+            continue
+
+        without_whitespace = "".join(
+            post_id.split()
+        )
+
+        if (
+            without_whitespace != post_id
+            and without_whitespace in expected
+        ):
+            repaired_classifications.append(
+                classification.model_copy(
+                    update={
+                        "post_id": without_whitespace,
+                    }
+                )
+            )
+            changed = True
+            continue
+
+        repaired_classifications.append(
+            classification
+        )
+
+    if not changed:
+        return response
+
+    return response.model_copy(
+        update={
+            "classifications": (
+                repaired_classifications
+            ),
+        }
+    )
+
+
 def classify_stage_b_batch(
     batch: list[StageBInput],
     *,
@@ -147,16 +199,24 @@ def classify_stage_b_batch(
         max_attempts + 1,
     ):
         try:
-            raw_response = api_client.responses.parse(
-                model=model,
-                instructions=STAGE_B_INSTRUCTIONS,
-                input=payload,
-                text_format=StageBBatchResponse,
-                reasoning={
-                    "effort": "none",
-                },
-                max_output_tokens=max_output_tokens,
-                store=False,
+            raw_response = (
+                api_client.responses.parse(
+                    model=model,
+                    instructions=(
+                        STAGE_B_INSTRUCTIONS
+                    ),
+                    input=payload,
+                    text_format=(
+                        StageBBatchResponse
+                    ),
+                    reasoning={
+                        "effort": "none",
+                    },
+                    max_output_tokens=(
+                        max_output_tokens
+                    ),
+                    store=False,
+                )
             )
 
             parsed = raw_response.output_parsed
@@ -166,6 +226,13 @@ def classify_stage_b_batch(
                     "OpenAI returned no parsed "
                     "Stage B Structured Output."
                 )
+
+            parsed = (
+                _repair_whitespace_only_post_ids(
+                    parsed,
+                    expected_post_ids,
+                )
+            )
 
             validate_batch_response(
                 parsed,
