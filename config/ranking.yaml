@@ -17,7 +17,7 @@ stage_a:
       comment_count_weight: 0.5
     absolute_floor:
       logic: any
-      min_score: 5
+      min_score: 4
       min_comment_count: 3
 
 stage_b:
