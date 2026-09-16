@@ -58,10 +58,19 @@ class ArcticShiftSource(RedditSource):
             last_created = cursor
 
             for raw in raw_posts:
-                post = self._normalize_post(raw, fetched_at)
+                post = self._normalize_post(
+                    raw,
+                    fetched_at,
+                )
 
-                created_epoch = int(post.created_at.timestamp())
-                last_created = max(last_created, created_epoch)
+                created_epoch = int(
+                    post.created_at.timestamp()
+                )
+
+                last_created = max(
+                    last_created,
+                    created_epoch,
+                )
 
                 if start_at <= post.created_at < end_at:
                     posts_by_id[post.id] = post
@@ -87,7 +96,11 @@ class ArcticShiftSource(RedditSource):
 
         posts_by_id: dict[str, Post] = {}
 
-        for offset in range(0, len(clean_ids), 500):
+        for offset in range(
+            0,
+            len(clean_ids),
+            500,
+        ):
             chunk = clean_ids[offset : offset + 500]
 
             if not chunk:
@@ -100,10 +113,16 @@ class ArcticShiftSource(RedditSource):
                 },
             )
 
-            fetched_at = datetime.now(timezone.utc)
+            fetched_at = datetime.now(
+                timezone.utc
+            )
 
             for raw in payload.get("data") or []:
-                post = self._normalize_post(raw, fetched_at)
+                post = self._normalize_post(
+                    raw,
+                    fetched_at,
+                )
+
                 posts_by_id[post.id] = post
 
         return [
@@ -126,7 +145,10 @@ class ArcticShiftSource(RedditSource):
         path: str,
         params: dict[str, object],
     ) -> dict:
-        url = f"{self.BASE_URL}{path}?{urlencode(params)}"
+        url = (
+            f"{self.BASE_URL}{path}?"
+            f"{urlencode(params)}"
+        )
 
         request = Request(
             url,
@@ -136,14 +158,18 @@ class ArcticShiftSource(RedditSource):
             },
         )
 
-        for attempt in range(self.MAX_RETRIES):
+        for attempt in range(
+            self.MAX_RETRIES
+        ):
             try:
                 with urlopen(
                     request,
                     timeout=self.TIMEOUT_SECONDS,
                 ) as response:
                     return json.loads(
-                        response.read().decode("utf-8")
+                        response.read().decode(
+                            "utf-8"
+                        )
                     )
 
             except HTTPError as exc:
@@ -154,7 +180,8 @@ class ArcticShiftSource(RedditSource):
 
                 if (
                     not retryable
-                    or attempt == self.MAX_RETRIES - 1
+                    or attempt
+                    == self.MAX_RETRIES - 1
                 ):
                     raise
 
@@ -182,7 +209,10 @@ class ArcticShiftSource(RedditSource):
                 )
 
             except URLError:
-                if attempt == self.MAX_RETRIES - 1:
+                if (
+                    attempt
+                    == self.MAX_RETRIES - 1
+                ):
                     raise
 
                 time.sleep(2**attempt)
@@ -219,10 +249,14 @@ class ArcticShiftSource(RedditSource):
             else 0
         )
 
-        comments_raw = raw.get("num_comments")
+        comments_raw = raw.get(
+            "num_comments"
+        )
 
         if comments_raw is None:
-            comments_raw = raw.get("comment_count")
+            comments_raw = raw.get(
+                "comment_count"
+            )
 
         comment_count = (
             int(comments_raw)
@@ -253,7 +287,9 @@ class ArcticShiftSource(RedditSource):
         if is_self_raw is None:
             is_self = bool(
                 domain
-                and domain.lower().startswith("self.")
+                and domain.lower().startswith(
+                    "self."
+                )
             )
         else:
             is_self = bool(is_self_raw)
@@ -261,7 +297,9 @@ class ArcticShiftSource(RedditSource):
         permalink_raw = raw.get("permalink")
 
         if permalink_raw:
-            permalink = str(permalink_raw)
+            permalink = str(
+                permalink_raw
+            )
 
             if permalink.startswith("/"):
                 permalink = (
@@ -271,12 +309,15 @@ class ArcticShiftSource(RedditSource):
         else:
             permalink = (
                 "https://www.reddit.com/"
-                f"r/{subreddit}/comments/{post_id}/"
+                f"r/{subreddit}/comments/"
+                f"{post_id}/"
             )
 
         crosspost_raw = (
             raw.get("crosspost_parent")
-            or raw.get("crosspost_parent_id")
+            or raw.get(
+                "crosspost_parent_id"
+            )
         )
 
         crosspost_parent = (
@@ -287,7 +328,9 @@ class ArcticShiftSource(RedditSource):
             else None
         )
 
-        ratio_raw = raw.get("upvote_ratio")
+        ratio_raw = raw.get(
+            "upvote_ratio"
+        )
 
         upvote_ratio = (
             float(ratio_raw)
@@ -295,7 +338,10 @@ class ArcticShiftSource(RedditSource):
             else None
         )
 
-        flair_raw = raw.get("link_flair_text")
+        flair_raw = raw.get(
+            "link_flair_text"
+        )
+
         flair = (
             str(flair_raw)
             if flair_raw
@@ -323,13 +369,22 @@ class ArcticShiftSource(RedditSource):
             flair=flair,
             is_self=is_self,
             is_nsfw=bool(
-                raw.get("over_18", False)
+                raw.get(
+                    "over_18",
+                    False,
+                )
             ),
             is_stickied=bool(
-                raw.get("stickied", False)
+                raw.get(
+                    "stickied",
+                    False,
+                )
             ),
             is_locked=bool(
-                raw.get("locked", False)
+                raw.get(
+                    "locked",
+                    False,
+                )
             ),
             is_crosspost=(
                 crosspost_parent is not None
@@ -406,20 +461,40 @@ class ArcticShiftSource(RedditSource):
         body: str,
         title: str,
     ) -> str:
+        """
+        Conservative removal detection.
+
+        Arctic Shift's removed_by_category can reflect
+        historical moderation/filtering and does not
+        necessarily mean that a post is currently
+        unavailable.
+
+        Only explicit Reddit removal/deletion markers
+        are treated as hard removed/deleted states.
+        """
+
         body_clean = body.strip().lower()
         title_clean = title.strip().lower()
 
+        deleted_markers = {
+            "[deleted]",
+        }
+
+        removed_markers = {
+            "[removed]",
+            "[ removed by moderator ]",
+            "[removed by moderator]",
+        }
+
         if (
-            body_clean == "[deleted]"
-            or title_clean == "[deleted]"
+            body_clean in deleted_markers
+            or title_clean in deleted_markers
         ):
             return "deleted"
 
         if (
-            body_clean == "[removed]"
-            or title_clean == "[removed]"
-            or raw.get("removed_by_category")
-            is not None
+            body_clean in removed_markers
+            or title_clean in removed_markers
         ):
             return "removed"
 
@@ -445,7 +520,8 @@ class ArcticShiftSource(RedditSource):
     ) -> datetime:
         if value.tzinfo is None:
             raise ValueError(
-                "datetime values must be timezone-aware"
+                "datetime values must be "
+                "timezone-aware"
             )
 
         return value.astimezone(
@@ -486,5 +562,6 @@ class ArcticShiftSource(RedditSource):
             )
 
         raise ValueError(
-            f"Unsupported created_utc value: {value!r}"
+            "Unsupported created_utc value: "
+            f"{value!r}"
         )
