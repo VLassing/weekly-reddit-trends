@@ -111,48 +111,98 @@ def _usage_from_response(
     )
 
 
-def _repair_whitespace_only_post_ids(
+def _repair_unambiguous_post_id_mismatch(
     response: StageBBatchResponse,
     expected_post_ids: list[str],
 ) -> StageBBatchResponse:
-    expected = set(expected_post_ids)
+    """
+    Repair one clearly unambiguous model typo in a post ID.
+
+    Repair is allowed only when:
+    - the response contains the expected number of classifications
+    - expected IDs are unique
+    - exactly one expected ID is missing
+    - exactly one unexpected ID is present
+    - the unexpected ID occurs exactly once
+
+    Example:
+
+        expected:
+        1wbwvfw
+
+        returned:
+        1wbvfwv
+
+    If more than one ID differs, no repair is attempted.
+    Normal validation will then fail the response.
+    """
+
+    if len(response.classifications) != len(
+        expected_post_ids
+    ):
+        return response
+
+    expected_set = set(expected_post_ids)
+
+    if len(expected_set) != len(
+        expected_post_ids
+    ):
+        return response
+
+    returned_ids = [
+        classification.post_id
+        for classification
+        in response.classifications
+    ]
+
+    returned_set = set(returned_ids)
+
+    missing_ids = (
+        expected_set
+        - returned_set
+    )
+
+    unexpected_ids = (
+        returned_set
+        - expected_set
+    )
+
+    if (
+        len(missing_ids) != 1
+        or len(unexpected_ids) != 1
+    ):
+        return response
+
+    missing_id = next(iter(missing_ids))
+    unexpected_id = next(
+        iter(unexpected_ids)
+    )
+
+    if returned_ids.count(
+        unexpected_id
+    ) != 1:
+        return response
 
     repaired_classifications = []
-    changed = False
 
-    for classification in response.classifications:
-        post_id = classification.post_id
-
-        if post_id in expected:
-            repaired_classifications.append(
-                classification
-            )
-            continue
-
-        without_whitespace = "".join(
-            post_id.split()
-        )
-
+    for classification in (
+        response.classifications
+    ):
         if (
-            without_whitespace != post_id
-            and without_whitespace in expected
+            classification.post_id
+            == unexpected_id
         ):
             repaired_classifications.append(
                 classification.model_copy(
                     update={
-                        "post_id": without_whitespace,
+                        "post_id": missing_id,
                     }
                 )
             )
-            changed = True
-            continue
-
-        repaired_classifications.append(
-            classification
-        )
-
-    if not changed:
-        return response
+        else:
+            repaired_classifications.append(
+                classification
+            )
 
     return response.model_copy(
         update={
@@ -228,7 +278,7 @@ def classify_stage_b_batch(
                 )
 
             parsed = (
-                _repair_whitespace_only_post_ids(
+                _repair_unambiguous_post_id_mismatch(
                     parsed,
                     expected_post_ids,
                 )
